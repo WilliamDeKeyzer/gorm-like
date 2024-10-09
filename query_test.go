@@ -9,16 +9,21 @@ import (
 	"gorm.io/gorm"
 )
 
+type ObjectA struct {
+	ID    uuid.UUID `gorm:"primaryKey"`
+	Name  string
+	Age   int
+	Other string
+}
+
+func (object *ObjectA) BeforeCreate(tx *gorm.DB) (err error) {
+	object.ID, _ = uuid.NewUUID()
+	return
+}
+
 // nolint:maintidx // Acceptable
 func TestGormLike_Initialize_TriggersLikingCorrectly(t *testing.T) {
 	t.Parallel()
-
-	type ObjectA struct {
-		ID    uuid.UUID
-		Name  string
-		Age   int
-		Other string
-	}
 
 	defaultQuery := func(db *gorm.DB) *gorm.DB { return db }
 
@@ -256,6 +261,15 @@ func TestGormLike_Initialize_TriggersLikingCorrectly(t *testing.T) {
 			existing: []ObjectA{{Name: "jessica", Age: 53, Other: "aab"}, {Name: "amy", Age: 20}, {Name: "John", Age: 25, Other: "bb"}},
 			expected: []ObjectA{{Name: "jessica", Age: 53, Other: "aab"}, {Name: "John", Age: 25, Other: "bb"}},
 		},
+		"UUID leading to like query": {
+			filter: map[string]any{
+				"id": []string{"1*"},
+			},
+			options:  []Option{WithCharacter("*")},
+			query:    defaultQuery,
+			existing: []ObjectA{{ID: uuid.MustParse("11473f0d-0d09-4880-a343-31a3f5fc73b7"), Name: "jessica", Age: 53, Other: "aab"}, {ID: uuid.MustParse("cade0be6-abab-4494-a29c-d89c138eb16e"), Name: "amy", Age: 20}, {ID: uuid.MustParse("1a4b1209-61c0-4fd6-a8b7-128930e7c426"), Name: "John", Age: 25, Other: "bb"}},
+			expected: []ObjectA{{ID: uuid.MustParse("11473f0d-0d09-4880-a343-31a3f5fc73b7"), Name: "jessica", Age: 53, Other: "aab"}, {ID: uuid.MustParse("1a4b1209-61c0-4fd6-a8b7-128930e7c426"), Name: "John", Age: 25, Other: "bb"}},
+		},
 	}
 
 	for name, testData := range tests {
@@ -282,7 +296,13 @@ func TestGormLike_Initialize_TriggersLikingCorrectly(t *testing.T) {
 			err = testData.query(db).Where(testData.filter).Find(&actual).Error
 			assert.NoError(t, err)
 
-			assert.Equal(t, testData.expected, actual)
+			if assert.Len(t, actual, len(testData.expected)) {
+				for i := range testData.expected {
+					assert.Equal(t, testData.expected[i].Name, actual[i].Name)
+					assert.Equal(t, testData.expected[i].Age, actual[i].Age)
+					assert.Equal(t, testData.expected[i].Other, actual[i].Other)
+				}
+			}
 		})
 	}
 }
